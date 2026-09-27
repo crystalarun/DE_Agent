@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Data Autopilot pipeline answers",
+  "type": "object",
+  "required": ["source_type", "tables", "write_disposition", "schedule"],
+  "properties": {
+    "source_type": {
+      "enum": ["chinook_sqlite", "sqlalchemy"]
+    },
+    "tables": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 1
+    },
+    "write_disposition": { "enum": ["replace", "merge"] },
+    "schedule": {
+      "description": "cron expression or the word manual",
+      "type": "string"
+    },
+    "aws_region": { "type": "string", "default": "us-east-1" }
+  }
+}
