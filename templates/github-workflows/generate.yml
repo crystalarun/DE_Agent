@@ -1,0 +1,54 @@
+name: generate-pipeline
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_type:
+        description: "chinook_sqlite or sqlalchemy"
+        required: true
+        default: chinook_sqlite
+      tables:
+        description: "Comma-separated tables"
+        required: true
+        default: Album,Artist,Track,Invoice
+      write_disposition:
+        description: "replace or merge"
+        required: true
+        default: replace
+      schedule:
+        description: "cron expression or manual"
+        required: true
+        default: "0 2 * * *"
+      aws_region:
+        description: "AWS region"
+        required: true
+        default: us-east-1
+
+permissions:
+  contents: write
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install PyYAML
+      - name: Apply answers
+        run: |
+          python agent/generate.py \
+            --source-type "${{ inputs.source_type }}" \
+            --tables "${{ inputs.tables }}" \
+            --write-disposition "${{ inputs.write_disposition }}" \
+            --schedule "${{ inputs.schedule }}" \
+            --aws-region "${{ inputs.aws_region }}"
+      - name: Commit contract
+        run: |
+          git config user.name "data-autopilot[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add pipelines/conf/pipeline.yaml
+          git diff --staged --quiet && echo "No contract changes" && exit 0
+          git commit -m "chore: update pipeline contract from agent answers"
+          git push
