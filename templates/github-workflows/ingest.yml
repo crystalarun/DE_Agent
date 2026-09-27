@@ -1,0 +1,52 @@
+name: ingest
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 2 * * *"
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  load:
+    runs-on: ubuntu-latest
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION || 'us-east-1' }}
+      LAKE_BUCKET: ${{ vars.LAKE_BUCKET }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Require lake bucket
+        run: |
+          if [ -z "$LAKE_BUCKET" ]; then
+            echo "Set repository variable LAKE_BUCKET to your S3 bucket name."
+            exit 1
+          fi
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install
+        run: pip install -r requirements.txt
+
+      - name: Contract tests
+        run: pytest pipelines/tests -q
+
+      - name: Build sample source
+        run: python samples/build_chinook.py
+
+      - name: Extract to S3 Parquet and register Glue
+        env:
+          SOURCE_DATABASE_URL: ${{ secrets.SOURCE_DATABASE_URL }}
+        run: python pipelines/ingest.py
