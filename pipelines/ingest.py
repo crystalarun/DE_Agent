@@ -2,7 +2,7 @@
 """Extract configured SQL tables to S3 Parquet, then register Glue tables.
 
 Secrets never belong in this file. AWS auth is the GitHub OIDC role.
-A future Postgres/MySQL source is SOURCE_DATABASE_URL in GitHub Secrets.
+A Postgres/MySQL source is provided via SOURCE_DATABASE_URL in GitHub Secrets.
 """
 from __future__ import annotations
 
@@ -30,7 +30,9 @@ def source_url(conf: dict) -> str:
     if kind == "chinook_sqlite":
         db = ROOT / "samples" / "chinook.sqlite"
         if not db.exists():
-            subprocess.check_call([sys.executable, str(ROOT / "samples" / "build_chinook.py")])
+            subprocess.check_call(
+                [sys.executable, str(ROOT / "samples" / "build_chinook.py")]
+            )
         return f"sqlite:///{db}"
     if kind == "sqlalchemy":
         url = os.environ.get("SOURCE_DATABASE_URL")
@@ -40,9 +42,39 @@ def source_url(conf: dict) -> str:
     raise SystemExit(f"Unsupported source type: {kind}")
 
 
+def resolve_tables(conf: dict, url: str) -> list[str]:
+    src = conf["source"]
+    tables = src.get("tables") or []
+    # Empty list means "all tables in schema"
+    if tables:
+        return tables
+
+    schema = src.get("schema")
+    if not schema:
+        raise SystemExit("source.schema is required when source.tables is empty")
+
+    # Resolve table names at runtime (no secrets in contract).
+    from sqlalchemy import create_engine, inspect
+
+    engine = create_engine(url)
+    try:
+        insp = inspect(engine)
+        names = insp.get_table_names(schema=schema)
+    finally:
+        engine.dispose()
+
+    if not names:
+        raise SystemExit(f"No tables found in schema '{schema}'")
+
+    # Pass fully-qualified names for clarity.
+    return [f"{schema}.{n}" for n in names]
+
+
 def main() -> None:
     conf = load_conf()
-    tables = conf["source"]["tables"]
+    url = source_url(conf)
+    tables = resolve_tables(conf, url)
+
     write = conf["source"].get("write_disposition", "replace")
     dataset = conf["destination"]["dataset"]
     bucket = os.environ.get("LAKE_BUCKET")
@@ -60,7 +92,12 @@ def main() -> None:
         dataset_name=dataset,
         progress="log",
     )
-    src = sql_database(source_url(conf), table_names=tables)
+
+    src_conf = conf["source"]
+    schema = src_conf.get("schema")
+    # If tables are schema-qualified, pass schema=None to avoid double-qualifying.
+    src = sql_database(url, table_names=tables, schema=None if any("." in t for t in tables) else schema)
+
     info = pipeline.run(src, loader_file_format="parquet", write_disposition=write)
     print(info)
 

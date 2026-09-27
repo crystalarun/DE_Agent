@@ -3,7 +3,7 @@ name: ingest
 on:
   workflow_dispatch:
   schedule:
-    - cron: "0 2 * * *"
+    - cron: "0 8 1 * *"  # 08:00 UTC on the 1st of every month
 
 permissions:
   id-token: write
@@ -42,9 +42,6 @@ jobs:
 
       - name: Contract tests
         run: pytest pipelines/tests -q
-
-      - name: Build sample source
-        run: python samples/build_chinook.py
 
       - name: Extract to S3 Parquet and register Glue
         env:

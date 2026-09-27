@@ -1,53 +1,19 @@
 # Non-secret pipeline contract. Secrets live in GitHub Secrets / AWS IAM.
-name: chinook_lake
-schedule: "0 2 * * *"  # daily 02:00 UTC; set to "manual" to disable cron
+name: postgres_lake
+schedule: "0 8 1 * *"  # 08:00 UTC on the 1st of every month; set to "manual" to disable cron
 
 source:
-  type: chinook_sqlite  # chinook_sqlite | sqlalchemy
-  tables:
-    - Album
-    - Artist
-    - Track
-    - Invoice
+  type: sqlalchemy  # chinook_sqlite | sqlalchemy
+  schema: public
+  tables: []        # empty = ingest all tables in schema
   write_disposition: replace  # replace | merge
   merge_keys: {}  # table -> list of primary key columns, required for merge
 
 destination:
   aws_region: us-east-1
-  s3_prefix: lake
-  dataset: chinook
-  glue_database: lake
+  s3_prefix: Test_data
+  dataset: pg
+  glue_database: glue_db_test
   file_format: parquet
 
-tables:
-  Album:
-    columns:
-      AlbumId: bigint
-      Title: string
-      ArtistId: bigint
-  Artist:
-    columns:
-      ArtistId: bigint
-      Name: string
-  Track:
-    columns:
-      TrackId: bigint
-      Name: string
-      AlbumId: bigint
-      MediaTypeId: bigint
-      GenreId: bigint
-      Composer: string
-      Milliseconds: bigint
-      Bytes: bigint
-      UnitPrice: double
-  Invoice:
-    columns:
-      InvoiceId: bigint
-      CustomerId: bigint
-      InvoiceDate: timestamp
-      BillingAddress: string
-      BillingCity: string
-      BillingState: string
-      BillingCountry: string
-      BillingPostalCode: string
-      Total: double
+tables: {}
