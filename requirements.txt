@@ -1,0 +1,7 @@
+dlt[s3,parquet,sql_database]
+SQLAlchemy>=2.0.18
+pandas
+pyarrow
+boto3
+PyYAML
+pytest
