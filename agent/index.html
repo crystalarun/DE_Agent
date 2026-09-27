@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Data Autopilot</title>
+  <style>
+    :root {
+      --bg: #11140f;
+      --card: #1b2118;
+      --ink: #f4f1e8;
+      --muted: #b7c2a8;
+      --accent: #c6f34d;
+      --line: #2c3627;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
+      background:
+        radial-gradient(1200px 500px at 10% -10%, #2a3d16 0%, transparent 50%),
+        var(--bg);
+      color: var(--ink);
+    }
+    main {
+      max-width: 880px;
+      margin: 0 auto;
+      padding: 48px 20px 80px;
+    }
+    h1 { font-size: 2.1rem; letter-spacing: -0.03em; margin: 0 0 8px; }
+    .lede { color: var(--muted); max-width: 62ch; line-height: 1.5; }
+    .grid { display: grid; gap: 16px; margin-top: 28px; }
+    @media (min-width: 800px) { .grid { grid-template-columns: 1.1fr 0.9fr; } }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      padding: 18px;
+    }
+    label { display: block; font-size: 0.82rem; color: var(--muted); margin: 12px 0 6px; }
+    input, select, textarea {
+      width: 100%;
+      background: #10150e;
+      color: var(--ink);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 10px 12px;
+      font: inherit;
+    }
+    button {
+      margin-top: 16px;
+      background: var(--accent);
+      color: #111;
+      border: 0;
+      border-radius: 999px;
+      padding: 10px 16px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    pre {
+      background: #0c100b;
+      border-radius: 12px;
+      padding: 12px;
+      overflow: auto;
+      font-size: 0.82rem;
+      line-height: 1.45;
+    }
+    .chat { min-height: 220px; }
+    .bubble { margin: 0 0 10px; padding: 10px 12px; border-radius: 12px; }
+    .bot { background: #242c20; }
+    .you { background: #31411d; margin-left: 24px; }
+    .warn { color: #f3d27a; font-size: 0.85rem; }
+  </style>
+</head>
+<body>
+  <main>
+    <p class="warn">No passwords, AWS keys, or GitHub tokens belong on this page.</p>
+    <h1>Data Autopilot</h1>
+    <p class="lede">
+      Answer a few questions. This page writes a non-secret pipeline contract.
+      GitHub Actions extracts SQL to S3 Parquet and registers Glue tables.
+      Airflow and Airbyte are intentionally not in this demo.
+    </p>
+    <div class="grid">
+      <section class="card">
+        <strong>Config form</strong>
+        <label>Source</label>
+        <select id="source_type">
+          <option value="chinook_sqlite">Chinook SQLite (sample)</option>
+          <option value="sqlalchemy">SQLAlchemy URL in GitHub Secret SOURCE_DATABASE_URL</option>
+        </select>
+        <label>Tables</label>
+        <input id="tables" value="Album,Artist,Track,Invoice" />
+        <label>Write mode</label>
+        <select id="write_disposition">
+          <option value="replace">replace (full refresh)</option>
+          <option value="merge">merge (needs primary keys later)</option>
+        </select>
+        <label>Schedule</label>
+        <select id="schedule">
+          <option value="0 2 * * *">Daily 02:00 UTC</option>
+          <option value="0 2 * * 1">Weekly Monday 02:00 UTC</option>
+          <option value="manual">Manual only</option>
+        </select>
+        <label>AWS region</label>
+        <input id="aws_region" value="us-east-1" />
+        <button type="button" id="build">Generate contract JSON</button>
+      </section>
+      <section class="card">
+        <strong>Chat-style</strong>
+        <div class="chat" id="chat"></div>
+        <input id="reply" placeholder="Type an answer and press Enter" />
+      </section>
+    </div>
+    <section class="card" style="margin-top:16px">
+      <strong>Output — run this in the repo</strong>
+      <pre id="out">Fill the form or answer the chat.</pre>
+    </section>
+  </main>
+  <script>
+    const questions = [
+      ["source_type", "What should we ingest? chinook_sqlite or sqlalchemy?"],
+      ["tables", "Which tables? Comma-separated."],
+      ["write_disposition", "replace or merge?"],
+      ["schedule", "cron like 0 2 * * * or manual?"],
+      ["aws_region", "AWS region? Default us-east-1."]
+    ];
+    const state = {};
+    let step = 0;
+    const chat = document.getElementById("chat");
+    function bot(text) {
+      const d = document.createElement("div");
+      d.className = "bubble bot";
+      d.textContent = text;
+      chat.appendChild(d);
+    }
+    function you(text) {
+      const d = document.createElement("div");
+      d.className = "bubble you";
+      d.textContent = text;
+      chat.appendChild(d);
+    }
+    bot(questions[0][1]);
+    document.getElementById("reply").addEventListener("keydown", (e) => {
+      if (e.key !== "Enter") return;
+      const value = e.target.value.trim();
+      if (!value) return;
+      you(value);
+      state[questions[step][0]] = value;
+      e.target.value = "";
+      step += 1;
+      if (step < questions.length) bot(questions[step][1]);
+      else {
+        bot("Contract ready. Copy the command below. Never paste secrets here.");
+        render(state);
+      }
+    });
+    function collectForm() {
+      return {
+        source_type: document.getElementById("source_type").value,
+        tables: document.getElementById("tables").value.split(",").map(s => s.trim()).filter(Boolean),
+        write_disposition: document.getElementById("write_disposition").value,
+        schedule: document.getElementById("schedule").value,
+        aws_region: document.getElementById("aws_region").value
+      };
+    }
+    function render(answers) {
+      if (typeof answers.tables === "string") {
+        answers.tables = answers.tables.split(",").map(s => s.trim()).filter(Boolean);
+      }
+      const tables = answers.tables.join(",");
+      const cmd = `# 1. Apply contract locally or via Actions > generate-pipeline
+python agent/generate.py --source-type ${answers.source_type} --tables ${tables} --write-disposition ${answers.write_disposition} --schedule "${answers.schedule}" --aws-region ${answers.aws_region}
+
+# 2. After AWS bootstrap, set GitHub secret AWS_ROLE_ARN and variable LAKE_BUCKET
+# 3. Actions > ingest > Run workflow
+
+${JSON.stringify(answers, null, 2)}`;
+      document.getElementById("out").textContent = cmd;
+    }
+    document.getElementById("build").onclick = () => render(collectForm());
+  </script>
+</body>
+</html>
